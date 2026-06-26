@@ -1,0 +1,28 @@
+node_modules/
+dist/
+build/
+*.log
+
+# local dev mock storage (sample posts + uploaded images)
+.dev-data/
+
+# CDK
+infra/cdk.out/
+cdk.context.json
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# local config (contains your account id / email / client id)
+web/.env.local
+web/public/site-config.json
+config.json
+config.local.json
+
+# OS
+.DS_Store
+
+# playwright mcp artifacts
+.playwright-mcp/

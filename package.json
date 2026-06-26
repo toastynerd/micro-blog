@@ -1,0 +1,20 @@
+{
+  "name": "thm-paints",
+  "version": "0.1.0",
+  "private": true,
+  "description": "THM Paints — art showcase: static site + tiny serverless admin on AWS",
+  "workspaces": [
+    "web",
+    "lambda",
+    "infra"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace lambda && npm run build --workspace web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev": "npm run dev --workspace web",
+    "mock": "node scripts/dev-server.mjs",
+    "dev:local": "DEV_MOCK=1 npm run dev --workspace web",
+    "synth": "npm run --workspace infra synth",
+    "deploy": "npm run build && npm run --workspace infra deploy"
+  }
+}

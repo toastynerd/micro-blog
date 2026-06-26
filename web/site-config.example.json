@@ -1,0 +1,6 @@
+{
+  "$comment": "For LOCAL DEV ONLY. Copy to web/public/site-config.json (gitignored) and fill in your Google OAuth client id so the /admin page works against `npm run dev`. In production this file is written by the CDK deploy.",
+  "googleClientId": "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+  "siteTitle": "THM Paints",
+  "siteDescription": "Recent paintings."
+}

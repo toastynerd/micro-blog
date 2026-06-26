@@ -1,0 +1,15 @@
+{
+  "$comment": "Copy to config.json and fill in. config.json is gitignored. This single file drives the CDK deploy and the values baked into the site.",
+
+  "awsAccountId": "111122223333",
+  "awsRegion": "us-east-1",
+
+  "domainName": "example.com",
+  "siteHost": "apex",
+
+  "ownerEmail": "you@gmail.com",
+  "googleClientId": "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+
+  "siteTitle": "THM Paints",
+  "siteDescription": "Recent paintings."
+}
