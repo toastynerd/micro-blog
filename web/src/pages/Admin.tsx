@@ -6,7 +6,13 @@ import {
   renderSignIn,
   signOut,
 } from "../lib/googleAuth";
-import { deletePost, editPost, loadPosts, publishPost } from "../lib/api";
+import {
+  deletePost,
+  editPost,
+  getViews,
+  loadPosts,
+  publishPost,
+} from "../lib/api";
 import { formatDate } from "../lib/format";
 
 function today(): string {
@@ -198,6 +204,7 @@ export function Admin({ config }: { config: SiteConfig }) {
 
 function ManagePosts({ token, reload }: { token: string; reload: number }) {
   const [posts, setPosts] = useState<Post[] | null>(null);
+  const [views, setViews] = useState<Record<string, number>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState({ location: "", blurb: "", dateTaken: "" });
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -205,7 +212,10 @@ function ManagePosts({ token, reload }: { token: string; reload: number }) {
 
   useEffect(() => {
     loadPosts().then(setPosts);
-  }, [reload]);
+    getViews(token)
+      .then(setViews)
+      .catch(() => setViews({}));
+  }, [reload, token]);
 
   function startEdit(p: Post) {
     setEditingId(p.id);
@@ -321,7 +331,10 @@ function ManagePosts({ token, reload }: { token: string; reload: number }) {
               <div className="manage-body">
                 {p.location && <p className="loc">{p.location}</p>}
                 {p.blurb && <p className="blurb">{p.blurb}</p>}
-                <p className="date muted">{formatDate(p.dateTaken)}</p>
+                <p className="date muted">
+                  {formatDate(p.dateTaken)} · {views[p.id] ?? 0} view
+                  {(views[p.id] ?? 0) === 1 ? "" : "s"}
+                </p>
                 <div className="manage-actions">
                   <button className="link-btn" onClick={() => startEdit(p)}>
                     edit

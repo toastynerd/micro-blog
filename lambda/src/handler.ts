@@ -15,6 +15,12 @@ import {
   CreateInvalidationCommand,
   ListDistributionsCommand,
 } from "@aws-sdk/client-cloudfront";
+import {
+  DynamoDBClient,
+  UpdateItemCommand,
+  ScanCommand,
+  DeleteItemCommand,
+} from "@aws-sdk/client-dynamodb";
 import { randomBytes } from "node:crypto";
 import { bearerFromHeaders, verifyGoogleIdToken } from "./verifyGoogle.js";
 import { renderPostPage } from "./ogTemplate.js";
@@ -28,6 +34,7 @@ const GOOGLE_CLIENT_ID = required("GOOGLE_CLIENT_ID");
 const SITE_TITLE = process.env.SITE_TITLE || "THM Paints";
 const SITE_DESCRIPTION = process.env.SITE_DESCRIPTION || "";
 const ORIGIN_SECRET = process.env.ORIGIN_SECRET;
+const VIEWS_TABLE = process.env.VIEWS_TABLE;
 
 const POSTS_KEY = "data/posts.json";
 const FEED_KEY = "feed.xml";
@@ -37,6 +44,7 @@ const HTML_CACHE = "public, max-age=60";
 
 const s3 = new S3Client({});
 const cf = new CloudFrontClient({});
+const ddb = new DynamoDBClient({});
 
 function required(name: string): string {
   const v = process.env[name];
@@ -342,11 +350,60 @@ async function handleDelete(body: any) {
         Key: `p/${post.slug}/index.html`,
       }),
     ),
+    // best-effort: drop the view counter row too
+    VIEWS_TABLE
+      ? ddb.send(
+          new DeleteItemCommand({
+            TableName: VIEWS_TABLE,
+            Key: { postId: { S: id } },
+          }),
+        )
+      : Promise.resolve(),
   ]);
 
   await invalidate(["/", "/index.html", "/data/posts.json", "/feed.xml", `/p/${post.slug}/*`]);
 
   return json(200, { ok: true });
+}
+
+// Public: record one view for a post (fired by a beacon from the post page).
+async function handleView(body: any) {
+  const id = String(body?.id || "");
+  if (!/^\d{4}-\d{2}-\d{2}-[0-9a-f]{6}$/.test(id))
+    return json(400, { error: "invalid id" });
+  if (!VIEWS_TABLE) return { statusCode: 204 };
+  await ddb.send(
+    new UpdateItemCommand({
+      TableName: VIEWS_TABLE,
+      Key: { postId: { S: id } },
+      UpdateExpression: "ADD #v :one",
+      ExpressionAttributeNames: { "#v": "views" },
+      ExpressionAttributeValues: { ":one": { N: "1" } },
+    }),
+  );
+  return { statusCode: 204 };
+}
+
+// Owner-only: return view counts keyed by post id.
+async function handleViews() {
+  const counts: Record<string, number> = {};
+  if (!VIEWS_TABLE) return json(200, { views: counts });
+  let startKey: Record<string, any> | undefined;
+  do {
+    const out = await ddb.send(
+      new ScanCommand({
+        TableName: VIEWS_TABLE,
+        ExclusiveStartKey: startKey,
+      }),
+    );
+    for (const item of out.Items ?? []) {
+      const pid = item.postId?.S;
+      const n = Number(item.views?.N ?? "0");
+      if (pid) counts[pid] = n;
+    }
+    startKey = out.LastEvaluatedKey;
+  } while (startKey);
+  return json(200, { views: counts });
 }
 
 function isValidDate(s: unknown): s is string {
@@ -373,21 +430,6 @@ export const handler = async (
       return json(403, { error: "forbidden" });
   }
 
-  // --- auth: every write requires a valid owner Google token ---
-  const token = bearerFromHeaders(
-    (event.headers ?? {}) as Record<string, string | undefined>,
-  );
-  if (!token) return json(401, { error: "missing bearer token" });
-
-  let user;
-  try {
-    user = await verifyGoogleIdToken(token, GOOGLE_CLIENT_ID);
-  } catch (e) {
-    return json(401, { error: "invalid token" });
-  }
-  if (!user.emailVerified || user.email !== OWNER_EMAIL)
-    return json(403, { error: "not authorized" });
-
   let body: any = {};
   if (event.body) {
     try {
@@ -400,6 +442,23 @@ export const handler = async (
     }
   }
 
+  // "view" is a public beacon (visitors aren't the owner); everything else
+  // requires a valid owner Google token.
+  if (op !== "view") {
+    const token = bearerFromHeaders(
+      (event.headers ?? {}) as Record<string, string | undefined>,
+    );
+    if (!token) return json(401, { error: "missing bearer token" });
+    let user;
+    try {
+      user = await verifyGoogleIdToken(token, GOOGLE_CLIENT_ID);
+    } catch (e) {
+      return json(401, { error: "invalid token" });
+    }
+    if (!user.emailVerified || user.email !== OWNER_EMAIL)
+      return json(403, { error: "not authorized" });
+  }
+
   try {
     switch (op) {
       case "create":
@@ -410,6 +469,10 @@ export const handler = async (
         return await handleEdit(body);
       case "delete":
         return await handleDelete(body);
+      case "view":
+        return await handleView(body);
+      case "views":
+        return await handleViews();
       default:
         return json(404, { error: `unknown op: ${op}` });
     }

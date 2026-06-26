@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Post, SiteConfig } from "../types";
-import { loadPosts } from "../lib/api";
+import { loadPosts, recordView } from "../lib/api";
 import { onLinkClick } from "../lib/router";
 import { formatDate } from "../lib/format";
 
@@ -36,6 +36,15 @@ export function PostPage({
       else setNotFound(true);
     });
   }, [slug, post, config.siteTitle]);
+
+  // Record one view per post per session (rough, human-only since it's JS).
+  useEffect(() => {
+    if (!post) return;
+    const key = `viewed:${post.id}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+    recordView(post.id);
+  }, [post]);
 
   if (notFound) {
     return (

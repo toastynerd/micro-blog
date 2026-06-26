@@ -100,6 +100,32 @@ export async function deletePost(token: string, id: string): Promise<void> {
   await postJson("delete", token, { id });
 }
 
+/** Public, best-effort view beacon (no auth). */
+export function recordView(id: string): void {
+  try {
+    fetch("/api/view", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* analytics is best-effort */
+  }
+}
+
+/** Owner-only: fetch view counts keyed by post id. */
+export async function getViews(
+  token: string,
+): Promise<Record<string, number>> {
+  const res = await postJson<{ views: Record<string, number> }>(
+    "views",
+    token,
+    {},
+  );
+  return res.views ?? {};
+}
+
 async function putBlob(
   url: string,
   blob: Blob,

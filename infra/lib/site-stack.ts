@@ -9,6 +9,7 @@ import * as route53 from "aws-cdk-lib/aws-route53";
 import * as targets from "aws-cdk-lib/aws-route53-targets";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
 
 export interface SiteStackProps extends cdk.StackProps {
@@ -66,6 +67,13 @@ export class SiteStack extends cdk.Stack {
       ],
     });
 
+    // --- Per-post view counts (private analytics) --------------------------
+    const viewsTable = new dynamodb.Table(this, "Views", {
+      partitionKey: { name: "postId", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // scales to zero
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
     // --- Admin Lambda (create / finalize / delete) -------------------------
     const fn = new lambda.Function(this, "AdminFn", {
       runtime: lambda.Runtime.NODEJS_20_X,
@@ -82,12 +90,14 @@ export class SiteStack extends cdk.Stack {
         GOOGLE_CLIENT_ID: props.googleClientId,
         SITE_TITLE: props.siteTitle,
         SITE_DESCRIPTION: props.siteDescription,
+        VIEWS_TABLE: viewsTable.tableName,
         // Only requests carrying this secret header (injected by CloudFront)
         // are accepted, so the public Function URL can't be hit directly.
         ORIGIN_SECRET: props.apiOriginSecret,
       },
     });
     bucket.grantReadWrite(fn);
+    viewsTable.grantReadWriteData(fn);
 
     // No IAM auth on the Function URL: CloudFront's OAC SigV4 signing breaks on
     // POST requests with a body. Instead the URL is public but every request is
