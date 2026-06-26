@@ -18,6 +18,7 @@ export interface SiteStackProps extends cdk.StackProps {
   googleClientId: string;
   siteTitle: string;
   siteDescription: string;
+  apiOriginSecret: string;
 }
 
 export class SiteStack extends cdk.Stack {
@@ -50,6 +51,19 @@ export class SiteStack extends cdk.Stack {
       enforceSSL: true,
       // Protect uploaded art: keep the bucket if the stack is ever deleted.
       removalPolicy: cdk.RemovalPolicy.RETAIN,
+      // Allow the browser to upload images directly via presigned PUT URLs
+      // (cross-origin from the site). Without this the preflight fails.
+      cors: [
+        {
+          allowedMethods: [s3.HttpMethods.PUT],
+          allowedOrigins: [
+            `https://${props.domainName}`,
+            `https://www.${props.domainName}`,
+          ],
+          allowedHeaders: ["*"],
+          maxAge: 3000,
+        },
+      ],
     });
 
     // --- Admin Lambda (create / finalize / delete) -------------------------
@@ -67,13 +81,19 @@ export class SiteStack extends cdk.Stack {
         OWNER_EMAIL: props.ownerEmail,
         GOOGLE_CLIENT_ID: props.googleClientId,
         SITE_TITLE: props.siteTitle,
-        // DISTRIBUTION_ID added below once the distribution exists.
+        // Only requests carrying this secret header (injected by CloudFront)
+        // are accepted, so the public Function URL can't be hit directly.
+        ORIGIN_SECRET: props.apiOriginSecret,
       },
     });
     bucket.grantReadWrite(fn);
 
+    // No IAM auth on the Function URL: CloudFront's OAC SigV4 signing breaks on
+    // POST requests with a body. Instead the URL is public but every request is
+    // gated by (a) the Google owner-token check in the handler and (b) a secret
+    // header that only CloudFront sends (see the /api/* behavior below).
     const fnUrl = fn.addFunctionUrl({
-      authType: lambda.FunctionUrlAuthType.AWS_IAM,
+      authType: lambda.FunctionUrlAuthType.NONE,
     });
 
     // --- SPA routing at the edge -------------------------------------------
@@ -113,7 +133,9 @@ function handler(event) {
       },
       additionalBehaviors: {
         "/api/*": {
-          origin: origins.FunctionUrlOrigin.withOriginAccessControl(fnUrl),
+          origin: new origins.FunctionUrlOrigin(fnUrl, {
+            customHeaders: { "x-origin-secret": props.apiOriginSecret },
+          }),
           viewerProtocolPolicy:
             cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
@@ -124,14 +146,21 @@ function handler(event) {
       },
     });
 
-    // Now the Lambda can invalidate the distribution after publishing.
-    fn.addEnvironment("DISTRIBUTION_ID", dist.distributionId);
+    // Let the Lambda invalidate the distribution after publishing. We grant on
+    // a wildcard (and the Lambda discovers its distribution at runtime by domain)
+    // rather than referencing dist.distributionId here — referencing it would
+    // make the Lambda depend on the distribution, which already depends on the
+    // Lambda (it routes /api/* to the function URL): a circular dependency.
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudfront:ListDistributions"],
+        resources: ["*"],
+      }),
+    );
     fn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["cloudfront:CreateInvalidation"],
-        resources: [
-          `arn:aws:cloudfront::${this.account}:distribution/${dist.distributionId}`,
-        ],
+        resources: [`arn:aws:cloudfront::${this.account}:distribution/*`],
       }),
     );
 

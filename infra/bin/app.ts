@@ -13,6 +13,7 @@ interface Config {
   googleClientId: string;
   siteTitle: string;
   siteDescription: string;
+  apiOriginSecret: string;
 }
 
 function loadConfig(): Config {
@@ -30,6 +31,7 @@ function loadConfig(): Config {
     "domainName",
     "ownerEmail",
     "googleClientId",
+    "apiOriginSecret",
   ] as const) {
     if (!cfg[k] || String(cfg[k]).includes("REPLACE")) {
       throw new Error(`config.json: "${k}" is not set`);
@@ -73,4 +75,5 @@ new SiteStack(app, "ThmPaintsSite", {
   googleClientId: cfg.googleClientId,
   siteTitle: cfg.siteTitle ?? "THM Paints",
   siteDescription: cfg.siteDescription ?? "",
+  apiOriginSecret: cfg.apiOriginSecret,
 });

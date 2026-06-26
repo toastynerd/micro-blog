@@ -13,6 +13,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   CloudFrontClient,
   CreateInvalidationCommand,
+  ListDistributionsCommand,
 } from "@aws-sdk/client-cloudfront";
 import { randomBytes } from "node:crypto";
 import { bearerFromHeaders, verifyGoogleIdToken } from "./verifyGoogle.js";
@@ -20,11 +21,11 @@ import { renderPostPage } from "./ogTemplate.js";
 import type { Post, PostList } from "./types.js";
 
 const BUCKET = required("BUCKET");
-const DISTRIBUTION_ID = required("DISTRIBUTION_ID");
 const SITE_BASE_URL = required("SITE_BASE_URL").replace(/\/$/, "");
 const OWNER_EMAIL = required("OWNER_EMAIL").toLowerCase();
 const GOOGLE_CLIENT_ID = required("GOOGLE_CLIENT_ID");
 const SITE_TITLE = process.env.SITE_TITLE || "THM Paints";
+const ORIGIN_SECRET = process.env.ORIGIN_SECRET;
 
 const POSTS_KEY = "data/posts.json";
 const SHELL_KEY = "index.html";
@@ -98,10 +99,39 @@ async function readShell(): Promise<string> {
   return out.Body!.transformToString();
 }
 
+// Discover our CloudFront distribution by matching the site host against its
+// aliases. Done at runtime (and cached) so the Lambda doesn't have to take a
+// build-time dependency on the distribution — that would create a circular
+// dependency, since the distribution already routes /api/* to this function.
+let cachedDistributionId: string | undefined;
+async function getDistributionId(): Promise<string | undefined> {
+  if (cachedDistributionId) return cachedDistributionId;
+  const host = new URL(SITE_BASE_URL).host;
+  let marker: string | undefined;
+  do {
+    const out = await cf.send(new ListDistributionsCommand({ Marker: marker }));
+    for (const d of out.DistributionList?.Items ?? []) {
+      if ((d.Aliases?.Items ?? []).includes(host)) {
+        cachedDistributionId = d.Id;
+        return cachedDistributionId;
+      }
+    }
+    marker = out.DistributionList?.IsTruncated
+      ? out.DistributionList?.NextMarker
+      : undefined;
+  } while (marker);
+  return undefined;
+}
+
 async function invalidate(paths: string[]): Promise<void> {
+  const distributionId = await getDistributionId();
+  if (!distributionId) {
+    console.warn("no CloudFront distribution found; skipping invalidation");
+    return;
+  }
   await cf.send(
     new CreateInvalidationCommand({
-      DistributionId: DISTRIBUTION_ID,
+      DistributionId: distributionId,
       InvalidationBatch: {
         CallerReference: `${Date.now()}-${rand6()}`,
         Paths: { Quantity: paths.length, Items: paths },
@@ -272,6 +302,13 @@ export const handler = async (
 
   if (method === "OPTIONS") return { statusCode: 204 };
   if (method !== "POST") return json(405, { error: "method not allowed" });
+
+  // --- only accept requests forwarded by CloudFront (which adds this header) ---
+  if (ORIGIN_SECRET) {
+    const headers = (event.headers ?? {}) as Record<string, string | undefined>;
+    if (headers["x-origin-secret"] !== ORIGIN_SECRET)
+      return json(403, { error: "forbidden" });
+  }
 
   // --- auth: every write requires a valid owner Google token ---
   const token = bearerFromHeaders(

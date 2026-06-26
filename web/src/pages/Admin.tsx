@@ -135,7 +135,6 @@ export function Admin({ config }: { config: SiteConfig }) {
           <input
             type="file"
             accept="image/*"
-            capture="environment"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
         </label>
@@ -147,7 +146,6 @@ export function Admin({ config }: { config: SiteConfig }) {
           <input
             type="text"
             value={location}
-            placeholder="Marin Headlands, CA"
             maxLength={120}
             onChange={(e) => setLocation(e.target.value)}
           />
@@ -157,7 +155,6 @@ export function Admin({ config }: { config: SiteConfig }) {
           <span>Blurb</span>
           <textarea
             value={blurb}
-            placeholder="What you’re painting, the light, the moment…"
             maxLength={280}
             rows={3}
             onChange={(e) => setBlurb(e.target.value)}
