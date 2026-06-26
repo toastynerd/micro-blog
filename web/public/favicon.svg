@@ -1,5 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <rect width="32" height="32" rx="6" fill="#8a5a2b" />
-  <path d="M7 22l5-8 4 5 3-4 6 7z" fill="#faf8f4" />
-  <circle cx="11" cy="10" r="2.5" fill="#faf8f4" />
+  <text x="16" y="16" font-family="ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif"
+        font-size="12" font-weight="700" letter-spacing="-0.5" fill="#faf8f4"
+        text-anchor="middle" dominant-baseline="central">THM</text>
 </svg>
