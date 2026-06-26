@@ -130,6 +130,9 @@ function handler(event) {
       domainNames: [siteDomain],
       certificate: cert,
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100, // cheapest (NA + EU)
+      // IPv4 only: some home networks have broken IPv6 routing to CloudFront,
+      // which makes browsers hang (ERR_CONNECTION_TIMED_OUT). No AAAA published.
+      enableIpv6: false,
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(bucket),
         viewerProtocolPolicy:
@@ -185,11 +188,7 @@ function handler(event) {
       recordName,
       target: aliasTarget,
     });
-    new route53.AaaaRecord(this, "AliasAAAA", {
-      zone,
-      recordName,
-      target: aliasTarget,
-    });
+    // No AAAA record on purpose — IPv4 only (see enableIpv6: false above).
 
     // --- Deploy the built site + runtime config ----------------------------
     // prune:false so user uploads (images/, p/*, data/posts.json) survive
