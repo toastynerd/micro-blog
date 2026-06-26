@@ -81,6 +81,7 @@ export class SiteStack extends cdk.Stack {
         OWNER_EMAIL: props.ownerEmail,
         GOOGLE_CLIENT_ID: props.googleClientId,
         SITE_TITLE: props.siteTitle,
+        SITE_DESCRIPTION: props.siteDescription,
         // Only requests carrying this secret header (injected by CloudFront)
         // are accepted, so the public Function URL can't be hit directly.
         ORIGIN_SECRET: props.apiOriginSecret,

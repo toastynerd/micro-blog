@@ -18,6 +18,7 @@ import {
 import { randomBytes } from "node:crypto";
 import { bearerFromHeaders, verifyGoogleIdToken } from "./verifyGoogle.js";
 import { renderPostPage } from "./ogTemplate.js";
+import { renderFeed } from "./feed.js";
 import type { Post, PostList } from "./types.js";
 
 const BUCKET = required("BUCKET");
@@ -25,9 +26,11 @@ const SITE_BASE_URL = required("SITE_BASE_URL").replace(/\/$/, "");
 const OWNER_EMAIL = required("OWNER_EMAIL").toLowerCase();
 const GOOGLE_CLIENT_ID = required("GOOGLE_CLIENT_ID");
 const SITE_TITLE = process.env.SITE_TITLE || "THM Paints";
+const SITE_DESCRIPTION = process.env.SITE_DESCRIPTION || "";
 const ORIGIN_SECRET = process.env.ORIGIN_SECRET;
 
 const POSTS_KEY = "data/posts.json";
+const FEED_KEY = "feed.xml";
 const SHELL_KEY = "index.html";
 const IMAGE_CACHE = "public, max-age=31536000, immutable";
 const HTML_CACHE = "public, max-age=60";
@@ -81,15 +84,32 @@ async function readPosts(): Promise<PostList> {
 }
 
 async function writePosts(posts: PostList): Promise<void> {
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: BUCKET,
-      Key: POSTS_KEY,
-      Body: JSON.stringify(posts),
-      ContentType: "application/json",
-      CacheControl: HTML_CACHE,
-    }),
-  );
+  // Keep the JSON manifest and the RSS feed in lock-step on every change.
+  await Promise.all([
+    s3.send(
+      new PutObjectCommand({
+        Bucket: BUCKET,
+        Key: POSTS_KEY,
+        Body: JSON.stringify(posts),
+        ContentType: "application/json",
+        CacheControl: HTML_CACHE,
+      }),
+    ),
+    s3.send(
+      new PutObjectCommand({
+        Bucket: BUCKET,
+        Key: FEED_KEY,
+        Body: renderFeed({
+          posts,
+          siteBaseUrl: SITE_BASE_URL,
+          siteTitle: SITE_TITLE,
+          siteDescription: SITE_DESCRIPTION,
+        }),
+        ContentType: "application/rss+xml; charset=utf-8",
+        CacheControl: HTML_CACHE,
+      }),
+    ),
+  ]);
 }
 
 async function readShell(): Promise<string> {
@@ -249,7 +269,7 @@ async function handleFinalize(body: any) {
     }),
   );
 
-  await invalidate(["/", "/index.html", "/data/posts.json", `/p/${slug}/*`]);
+  await invalidate(["/", "/index.html", "/data/posts.json", "/feed.xml", `/p/${slug}/*`]);
 
   return json(200, { ok: true, id, slug, url: `${SITE_BASE_URL}/p/${slug}/` });
 }
@@ -292,7 +312,7 @@ async function handleEdit(body: any) {
     }),
   );
 
-  await invalidate(["/", "/index.html", "/data/posts.json", `/p/${post.slug}/*`]);
+  await invalidate(["/", "/index.html", "/data/posts.json", "/feed.xml", `/p/${post.slug}/*`]);
 
   return json(200, { ok: true, id, slug: post.slug });
 }
@@ -324,7 +344,7 @@ async function handleDelete(body: any) {
     ),
   ]);
 
-  await invalidate(["/", "/index.html", "/data/posts.json", `/p/${post.slug}/*`]);
+  await invalidate(["/", "/index.html", "/data/posts.json", "/feed.xml", `/p/${post.slug}/*`]);
 
   return json(200, { ok: true });
 }
