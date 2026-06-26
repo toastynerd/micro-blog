@@ -254,6 +254,49 @@ async function handleFinalize(body: any) {
   return json(200, { ok: true, id, slug, url: `${SITE_BASE_URL}/p/${slug}/` });
 }
 
+async function handleEdit(body: any) {
+  const id = String(body?.id || "");
+  if (!/^\d{4}-\d{2}-\d{2}-[0-9a-f]{6}$/.test(id))
+    return json(400, { error: "invalid id" });
+
+  const posts = await readPosts();
+  const idx = posts.findIndex((p) => p.id === id);
+  if (idx === -1) return json(404, { error: "not found" });
+
+  // Update text fields only; slug/image/createdAt stay fixed so existing
+  // shared links keep working.
+  const post = posts[idx];
+  if (typeof body.blurb === "string")
+    post.blurb = body.blurb.trim().slice(0, 280);
+  if (typeof body.location === "string")
+    post.location = body.location.trim().slice(0, 120);
+  if (isValidDate(body.dateTaken)) post.dateTaken = body.dateTaken;
+  posts[idx] = post;
+  await writePosts(posts);
+
+  // re-render the per-post OG page with the updated content
+  const shell = await readShell();
+  const html = renderPostPage({
+    post,
+    siteBaseUrl: SITE_BASE_URL,
+    siteTitle: SITE_TITLE,
+    spaShell: shell,
+  });
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: BUCKET,
+      Key: `p/${post.slug}/index.html`,
+      Body: html,
+      ContentType: "text/html; charset=utf-8",
+      CacheControl: HTML_CACHE,
+    }),
+  );
+
+  await invalidate(["/", "/index.html", "/data/posts.json", `/p/${post.slug}/*`]);
+
+  return json(200, { ok: true, id, slug: post.slug });
+}
+
 async function handleDelete(body: any) {
   const id = String(body?.id || "");
   if (!/^\d{4}-\d{2}-\d{2}-[0-9a-f]{6}$/.test(id))
@@ -343,6 +386,8 @@ export const handler = async (
         return await handleCreate(body);
       case "finalize":
         return await handleFinalize(body);
+      case "edit":
+        return await handleEdit(body);
       case "delete":
         return await handleDelete(body);
       default:

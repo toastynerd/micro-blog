@@ -184,6 +184,52 @@ button.share {
   flex-wrap: wrap;
 }
 
+/* ---- manage posts (admin) ---- */
+.manage {
+  margin-top: 2.5rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1.5rem;
+}
+.manage h2 {
+  font-size: 1.1rem;
+  margin: 0 0 1rem;
+}
+.manage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.manage-item {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+}
+.manage-thumb {
+  width: 72px;
+  height: 72px;
+  flex: 0 0 72px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--line);
+}
+.manage-body,
+.manage-edit {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.manage-edit .field {
+  margin-bottom: 0.6rem;
+}
+.manage-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 0.4rem;
+}
+
 /* ---- small screens ---- */
 @media (max-width: 480px) {
   .page {

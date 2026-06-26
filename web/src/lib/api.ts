@@ -82,6 +82,20 @@ export async function publishPost(
   return { slug: result.slug, url: result.url };
 }
 
+export interface EditPostInput {
+  id: string;
+  location: string;
+  blurb: string;
+  dateTaken: string;
+}
+
+export async function editPost(
+  token: string,
+  input: EditPostInput,
+): Promise<void> {
+  await postJson("edit", token, input);
+}
+
 export async function deletePost(token: string, id: string): Promise<void> {
   await postJson("delete", token, { id });
 }

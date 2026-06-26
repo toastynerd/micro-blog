@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { SiteConfig } from "../types";
+import type { Post, SiteConfig } from "../types";
 import {
   decodeEmail,
   getCachedToken,
   renderSignIn,
   signOut,
 } from "../lib/googleAuth";
-import { publishPost } from "../lib/api";
+import { deletePost, editPost, loadPosts, publishPost } from "../lib/api";
+import { formatDate } from "../lib/format";
 
 function today(): string {
   const d = new Date();
@@ -27,6 +28,7 @@ export function Admin({ config }: { config: SiteConfig }) {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
 
   // Render the Google button until signed in.
   useEffect(() => {
@@ -104,6 +106,7 @@ export function Admin({ config }: { config: SiteConfig }) {
       setBlurb("");
       setLocation("");
       setDateTaken(today());
+      setReload((n) => n + 1);
     } catch (err: any) {
       setStatus(`Error: ${err?.message || "failed"}`);
     } finally {
@@ -187,6 +190,155 @@ export function Admin({ config }: { config: SiteConfig }) {
           </button>
         </div>
       )}
+
+      <ManagePosts token={token} reload={reload} />
     </div>
+  );
+}
+
+function ManagePosts({ token, reload }: { token: string; reload: number }) {
+  const [posts, setPosts] = useState<Post[] | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState({ location: "", blurb: "", dateTaken: "" });
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadPosts().then(setPosts);
+  }, [reload]);
+
+  function startEdit(p: Post) {
+    setEditingId(p.id);
+    setDraft({ location: p.location, blurb: p.blurb, dateTaken: p.dateTaken });
+    setMsg(null);
+  }
+
+  async function save(id: string) {
+    setBusyId(id);
+    setMsg(null);
+    try {
+      await editPost(token, { id, ...draft });
+      // optimistic local update (avoids a stale-cache refetch race)
+      setPosts(
+        (cur) =>
+          cur?.map((p) => (p.id === id ? { ...p, ...draft } : p)) ?? cur,
+      );
+      setEditingId(null);
+    } catch (e: any) {
+      setMsg(`Error: ${e?.message || "failed to save"}`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function remove(p: Post) {
+    if (
+      !window.confirm(
+        `Delete this post${p.location ? ` (${p.location})` : ""}? This can't be undone.`,
+      )
+    )
+      return;
+    setBusyId(p.id);
+    setMsg(null);
+    try {
+      await deletePost(token, p.id);
+      setPosts((cur) => cur?.filter((x) => x.id !== p.id) ?? cur);
+    } catch (e: any) {
+      setMsg(`Error: ${e?.message || "failed to delete"}`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (posts === null)
+    return (
+      <section className="manage">
+        <h2>Your posts</h2>
+        <p className="muted">Loading…</p>
+      </section>
+    );
+
+  return (
+    <section className="manage">
+      <h2>Your posts</h2>
+      {msg && <p className="status">{msg}</p>}
+      {posts.length === 0 && <p className="muted">No posts yet.</p>}
+      <ul className="manage-list">
+        {posts.map((p) => (
+          <li className="manage-item" key={p.id}>
+            <img className="manage-thumb" src={`/${p.image.thumb}`} alt="" />
+            {editingId === p.id ? (
+              <div className="manage-edit">
+                <label className="field">
+                  <span>Location</span>
+                  <input
+                    type="text"
+                    value={draft.location}
+                    maxLength={120}
+                    onChange={(e) =>
+                      setDraft({ ...draft, location: e.target.value })
+                    }
+                  />
+                </label>
+                <label className="field">
+                  <span>Blurb</span>
+                  <textarea
+                    value={draft.blurb}
+                    maxLength={280}
+                    rows={3}
+                    onChange={(e) =>
+                      setDraft({ ...draft, blurb: e.target.value })
+                    }
+                  />
+                </label>
+                <label className="field">
+                  <span>Date</span>
+                  <input
+                    type="date"
+                    value={draft.dateTaken}
+                    onChange={(e) =>
+                      setDraft({ ...draft, dateTaken: e.target.value })
+                    }
+                  />
+                </label>
+                <div className="manage-actions">
+                  <button
+                    className="primary"
+                    disabled={busyId === p.id}
+                    onClick={() => save(p.id)}
+                  >
+                    {busyId === p.id ? "Saving…" : "Save"}
+                  </button>
+                  <button
+                    className="link-btn"
+                    onClick={() => setEditingId(null)}
+                  >
+                    cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="manage-body">
+                {p.location && <p className="loc">{p.location}</p>}
+                {p.blurb && <p className="blurb">{p.blurb}</p>}
+                <p className="date muted">{formatDate(p.dateTaken)}</p>
+                <div className="manage-actions">
+                  <button className="link-btn" onClick={() => startEdit(p)}>
+                    edit
+                  </button>
+                  <button
+                    className="link-btn"
+                    disabled={busyId === p.id}
+                    onClick={() => remove(p)}
+                  >
+                    {busyId === p.id ? "…" : "delete"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

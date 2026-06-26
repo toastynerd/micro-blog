@@ -197,7 +197,12 @@ function handler(event) {
       ],
       prune: false,
       distribution: dist,
-      distributionPaths: ["/index.html", "/assets/*", "/site-config.json"],
+      distributionPaths: [
+        "/index.html",
+        "/assets/*",
+        "/site-config.json",
+        "/favicon.svg",
+      ],
       cacheControl: [
         s3deploy.CacheControl.setPublic(),
         s3deploy.CacheControl.maxAge(cdk.Duration.hours(1)),
